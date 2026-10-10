@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Web SQL Studio</title>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Đã thay RemixIcon bằng FontAwesome 6 -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="style.css" />
+
+    <!-- CodeMirror -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/dracula.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/hint/show-hint.min.css"
+    />
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/sql/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/hint/show-hint.min.js"></script>
+
+    <!-- Engines -->
+    <script src="https://cdn.jsdelivr.net/npm/alasql@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+  </head>
+  <body>
+    <header class="top-header">
+      <div class="brand">
+        <!-- Nút Toggle Sidebar -->
+        <button
+          id="btn-toggle-sidebar"
+          class="icon-btn"
+          style="margin-right: 10px"
+          title="Đóng/Mở thanh bên"
+        >
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <i class="fa-solid fa-terminal"></i> Web SQL Studio
+      </div>
+      <div class="header-controls">
+        <select id="engine-select">
+          <option value="postgres">PostgreSQL</option>
+          <option value="sqlite">SQLite</option>
+          <option value="mysql">MySQL</option>
+        </select>
+        <button
+          id="btn-theme-toggle"
+          class="btn btn-secondary"
+          title="Đổi giao diện Sáng/Tối"
+        >
+          <i class="ri-sun-line"></i>
+        </button>
+        <button id="btn-new-db" class="btn btn-primary">
+          <i class="fa-solid fa-plus"></i> Tạo CSDL
+        </button>
+        <button id="btn-history" class="btn btn-secondary">
+          <i class="fa-solid fa-clock-rotate-left"></i> Lịch sử
+        </button>
+        <button id="btn-backup" class="btn btn-warning">
+          <i class="fa-solid fa-database"></i> Sao lưu/Phục hồi
+        </button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <span>Quản lý CSDL</span>
+          <button id="btn-refresh-explorer" class="icon-btn" title="Làm mới">
+            <i class="fa-solid fa-rotate-right"></i>
+          </button>
+        </div>
+        <div id="explorer-tree" class="explorer-tree"></div>
+      </aside>
+
+      <main class="main-area">
+        <div class="editors-container" id="editors-container">
+          <!-- Editor A: DDL & Table Designer -->
+          <div class="editor-pane" id="pane-a">
+            <div class="pane-toolbar">
+              <span class="pane-title"
+                ><i class="fa-solid fa-table"></i> Trình soạn thảo A (DDL)</span
+              >
+              <div class="pane-actions">
+                <button
+                  id="btn-toggle-designer"
+                  class="btn btn-sm btn-secondary"
+                >
+                  <i class="fa-solid fa-pen-ruler"></i> Thiết kế Bảng
+                </button>
+                <button id="btn-run-ddl" class="btn btn-sm btn-run">
+                  <i class="fa-solid fa-play"></i> Chạy DDL
+                </button>
+              </div>
+            </div>
+
+            <!-- Code Editor A -->
+            <div
+              id="editor-a-wrapper"
+              style="flex: 1; display: flex; flex-direction: column"
+            >
+              <textarea id="editor-a"></textarea>
+            </div>
+
+            <!-- UI Table Designer (Hidden by default) -->
+            <div
+              id="designer-wrapper"
+              class="designer-ui"
+              style="display: none"
+            >
+              <div class="designer-header">
+                <input
+                  type="text"
+                  id="designer-table-name"
+                  placeholder="Nhập tên bảng..."
+                  class="form-input"
+                />
+                <button id="btn-add-col" class="btn btn-sm btn-primary">
+                  <i class="fa-solid fa-plus"></i> Thêm Cột
+                </button>
+                <button id="btn-preview-ddl" class="btn btn-sm btn-warning">
+                  Xem trước SQL
+                </button>
+              </div>
+              <div class="designer-body">
+                <table id="designer-cols-table">
+                  <thead>
+                    <tr>
+                      <th>Tên cột</th>
+                      <th>Kiểu dữ liệu</th>
+                      <th>Khóa chính (PK)</th>
+                      <th>Bắt buộc (Not Null)</th>
+                      <th>Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody id="designer-cols-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="resizer-vertical" id="resizer-v"></div>
+
+          <!-- Editor B: Query -->
+          <div class="editor-pane" id="pane-b">
+            <div class="pane-toolbar">
+              <span class="pane-title"
+                ><i class="fa-solid fa-code"></i> Trình soạn thảo B (Truy
+                vấn)</span
+              >
+              <div class="pane-actions">
+                <button
+                  id="btn-format-sql"
+                  class="btn btn-sm btn-secondary"
+                  title="Định dạng SQL (Cơ bản)"
+                >
+                  <i class="fa-solid fa-align-left"></i>
+                </button>
+                <button id="btn-run-query" class="btn btn-sm btn-run">
+                  <i class="fa-solid fa-play"></i> Thực thi (F5)
+                </button>
+              </div>
+            </div>
+            <!-- BỌC LẠI EDITOR B -->
+            <div
+              id="editor-b-wrapper"
+              style="
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+              "
+            >
+              <textarea id="editor-b"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="resizer-horizontal" id="resizer-h"></div>
+
+        <div class="bottom-panel" id="bottom-panel">
+          <div class="tabs-header">
+            <button class="tab-btn active" data-target="tab-results">
+              <i class="fa-solid fa-table-list"></i> Kết quả
+            </button>
+            <button class="tab-btn" data-target="tab-structure">
+              <i class="fa-solid fa-columns"></i> Cấu trúc
+            </button>
+            <button class="tab-btn" data-target="tab-data">
+              <i class="fa-solid fa-server"></i> Dữ liệu bảng
+            </button>
+            <button class="tab-btn" data-target="tab-messages">
+              <i class="fa-solid fa-message"></i> Nhật ký
+            </button>
+          </div>
+          <div class="tabs-content">
+            <!-- Tab Results with Toolbar (Pagination & Export) -->
+            <div id="tab-results" class="tab-pane active">
+              <div class="grid-toolbar">
+                <input
+                  type="text"
+                  id="search-results"
+                  class="form-input"
+                  placeholder="Tìm kiếm trong kết quả..."
+                />
+                <div class="pagination-controls">
+                  <button id="btn-prev-page" class="icon-btn">
+                    <i class="fa-solid fa-chevron-left"></i>
+                  </button>
+                  <span id="page-info">Trang 1 / 1</span>
+                  <button id="btn-next-page" class="icon-btn">
+                    <i class="fa-solid fa-chevron-right"></i>
+                  </button>
+                </div>
+                <div class="export-controls">
+                  <button id="btn-export-csv" class="btn btn-sm btn-secondary">
+                    <i class="fa-solid fa-file-csv"></i> CSV
+                  </button>
+                  <button id="btn-export-json" class="btn btn-sm btn-secondary">
+                    <i class="fa-solid fa-code"></i> JSON
+                  </button>
+                </div>
+              </div>
+              <div class="table-responsive" id="grid-results">
+                <i>Chạy truy vấn để xem kết quả...</i>
+              </div>
+            </div>
+            <div id="tab-structure" class="tab-pane">
+              <div class="table-responsive" id="grid-structure">
+                <i>Chọn một bảng từ thanh Quản lý CSDL...</i>
+              </div>
+            </div>
+            <div id="tab-data" class="tab-pane">
+              <div class="table-responsive" id="grid-data">
+                <i>Chọn một bảng từ thanh Quản lý CSDL...</i>
+              </div>
+            </div>
+            <div id="tab-messages" class="tab-pane">
+              <pre id="log-messages">Hệ thống sẵn sàng.</pre>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Modal History -->
+    <div class="modal-overlay" id="modal-history">
+      <div class="modal-content" style="width: 600px">
+        <div class="modal-header">
+          <h3>
+            <i class="fa-solid fa-clock-rotate-left"></i> Lịch sử Truy vấn
+          </h3>
+          <button class="icon-btn close-modal">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <ul id="history-list" class="history-list"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Backup -->
+    <div class="modal-overlay" id="modal-backup">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-shield-halved"></i> Sao lưu & Phục hồi</h3>
+          <button class="icon-btn close-modal">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>
+            Xuất toàn bộ cấu trúc và dữ liệu thật của hệ thống hiện tại ra file
+            JSON.
+          </p>
+          <button id="btn-export-db" class="btn btn-primary btn-block mb-2">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Xuất Cơ sở dữ liệu
+          </button>
+          <hr style="margin: 15px 0; border-color: var(--border)" />
+          <p>Phục hồi Cơ sở dữ liệu từ file JSON đã xuất:</p>
+          <input
+            type="file"
+            id="file-import-db"
+            accept=".json"
+            style="display: none"
+          />
+          <button
+            id="btn-import-db"
+            class="btn btn-warning btn-block"
+            onclick="document.getElementById('file-import-db').click()"
+          >
+            <i class="fa-solid fa-cloud-arrow-up"></i> Nhập Cơ sở dữ liệu
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
