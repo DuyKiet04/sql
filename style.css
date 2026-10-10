@@ -9,7 +9,7 @@
     --bg-table-even: #2a2a2a;
     --bg-table-hover: #37373d;
     --bg-hover: rgba(255,255,255,0.1);
-
+    --brand-gradient: linear-gradient(135deg, #00D4FF 0%, #0066FF 55%, #00E5C0 100%);
     --text-main: #cccccc; 
     --text-light: #ffffff; 
     --text-muted: #858585;
@@ -40,7 +40,7 @@
     --bg-table-even: #f9fafb;
     --bg-table-hover: #f3f4f6;
     --bg-hover: rgba(0,0,0,0.05);
-
+    --brand-gradient: linear-gradient(135deg, #00D4FF 0%, #0066FF 55%, #00E5C0 100%);
     --text-main: #4b5563; 
     --text-light: #111827; 
     --text-muted: #6b7280;
@@ -80,7 +80,30 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 .top-header { height: 48px; background-color: var(--bg-header); display: flex; justify-content: space-between; align-items: center; padding: 0 15px; border-bottom: 1px solid var(--border); transition: 0.2s; }
-.brand { font-size: 15px; font-weight: 600; color: var(--text-light); display: flex; align-items: center; gap: 8px;}
+/* .brand { font-size: 15px; font-weight: 600; color: var(--text-light); display: flex; align-items: center; gap: 8px;} */
+.brand {
+display: flex;
+align-items: center;
+gap: 10px;
+}
+
+.brand-logo {
+width: 32px;
+height: 32px;
+object-fit: contain;
+flex-shrink: 0;
+}
+
+.brand-name {
+  font-weight: 700;
+  font-size: 15px;
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  
+}
+
 .header-controls { display: flex; gap: 10px; }
 
 select, .form-input, .btn { background: var(--bg-input); color: var(--text-light); border: 1px solid var(--border); padding: 6px 12px; border-radius: 4px; font-size: 13px; outline: none; transition: 0.2s;}
@@ -144,6 +167,7 @@ select:focus, .form-input:focus { border-color: var(--primary); }
 .grid-toolbar { padding: 8px 10px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 13px;}
 .pagination-controls { display: flex; align-items: center; gap: 10px; }
 .export-controls { display: flex; gap: 5px; }
+
 
 /* Table Data Grid */
 .table-responsive { flex: 1; overflow: auto; padding: 10px;}
