@@ -234,3 +234,28 @@ td[contenteditable="true"] {
     cursor: text;
 }
 td.edited-cell { background: rgba(46, 160, 67, 0.2) !important; font-style: italic; }
+/* --- MENU CHUỘT PHẢI CHO DATABASE --- */
+#db-context-menu {
+    position: fixed;
+    display: none;
+    background: var(--bg-input, #2d2d2d);
+    border: 1px solid var(--border, #444);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    border-radius: 4px;
+    z-index: 99999;
+    padding: 4px 0;
+    min-width: 140px;
+}
+#db-context-menu .menu-item {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--danger, #f44336);
+    cursor: pointer;
+    user-select: none;
+}
+#db-context-menu .menu-item:hover {
+    background: rgba(244, 67, 54, 0.15);
+}

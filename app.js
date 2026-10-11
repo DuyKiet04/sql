@@ -682,15 +682,108 @@ async function refreshExplorer() {
         dbNode.innerHTML = `<i class="ri-database-2-line"></i> ${db} ${db === activeDb ? '<span style="color:var(--success); font-size:11px; margin-left:5px;">(Active)</span>' : ''}`;
         
         // --- ĐOẠN MỚI THÊM: Click vào để chuyển Database ---
+        // dbNode.onclick = async () => {
+        //     if (AppState.activeDBs[engine] !== db) {
+        //         AppState.activeDBs[engine] = db;
+        //         localStorage.setItem('ide_active_dbs', JSON.stringify(AppState.activeDBs)); 
+        //         await refreshExplorer();
+        //         logMessage(`🔌 Đã kết nối tới Database: ${db}`, "success");
+        //     }
+        // };
+
+        // Click trái để chuyển Database
         dbNode.onclick = async () => {
             if (AppState.activeDBs[engine] !== db) {
                 AppState.activeDBs[engine] = db;
-                localStorage.setItem('ide_active_dbs', JSON.stringify(AppState.activeDBs)); // Lưu lại
+                localStorage.setItem('ide_active_dbs', JSON.stringify(AppState.activeDBs)); 
                 await refreshExplorer();
+                if(window.loadCodeForCurrentDB) loadCodeForCurrentDB();
                 logMessage(`🔌 Đã kết nối tới Database: ${db}`, "success");
             }
         };
         // ---------------------------------------------------
+
+        // --- TÍNH NĂNG MỚI: CHUỘT PHẢI HIỆN MENU XÓA DB ---
+        dbNode.oncontextmenu = (e) => {
+            e.preventDefault(); // Chặn menu mặc định của trình duyệt
+            
+            // Xóa menu cũ nếu đang mở
+            const oldMenu = document.getElementById('db-context-menu');
+            if (oldMenu) oldMenu.remove();
+
+            // Tạo menu chuột phải mới
+            const menu = document.createElement('div');
+            menu.id = 'db-context-menu';
+            menu.style.display = 'block';
+            menu.style.left = `${e.pageX}px`;
+            menu.style.top = `${e.pageY}px`;
+            
+            menu.innerHTML = `
+                <div class="menu-item" id="ctx-delete-db">
+                    <i class="fa-solid fa-trash-can"></i> Xóa Database (${db})
+                </div>
+            `;
+            
+            document.body.appendChild(menu);
+
+            // Xử lý khi bấm nút Xóa trên Menu
+            document.getElementById('ctx-delete-db').onclick = async () => {
+                menu.remove();
+                
+                // Kích hoạt logic xóa Database (tương tự như nút thùng rác trên Header)
+                const warning = `CẢNH BÁO: Bạn có chắc chắn muốn xóa vĩnh viễn Database '${db}' không?\n\nToàn bộ bảng, dữ liệu và lệnh SQL trong Database này sẽ bị bốc hơi!`;
+                if (!confirm(warning)) return;
+
+                if (window.showLoader) showLoader(`Đang xóa Database '${db}'...`);
+                await new Promise(resolve => setTimeout(resolve, 50));
+                
+                try {
+                    AppState.dbLists[engine] = AppState.dbLists[engine].filter(item => item !== db);
+                    
+                    if (AppState.dbLists[engine].length === 0) {
+                        const defaultDb = engine === 'sqlite' ? 'main' : 'public';
+                        AppState.dbLists[engine].push(defaultDb);
+                        await AppState.adapters[engine].createDB(defaultDb);
+                    }
+                    
+                    if (AppState.activeDBs[engine] === db) {
+                        AppState.activeDBs[engine] = AppState.dbLists[engine][0];
+                    }
+                    
+                    localStorage.setItem('ide_db_lists', JSON.stringify(AppState.dbLists));
+                    localStorage.setItem('ide_active_dbs', JSON.stringify(AppState.activeDBs));
+                    
+                    localStorage.removeItem(`draft_${engine}_${db}_a`);
+                    localStorage.removeItem(`draft_${engine}_${db}_b`);
+                    
+                    if (engine === 'mysql') alasql(`DROP DATABASE IF EXISTS ${db}`);
+                    if (engine === 'sqlite') delete AppState.adapters.sqlite.instances[db];
+                    if (engine === 'postgres' && AppState.adapters.postgres.instances[db]) {
+                        if (typeof AppState.adapters.postgres.instances[db].close === 'function') {
+                            await AppState.adapters.postgres.instances[db].close();
+                        }
+                        delete AppState.adapters.postgres.instances[db];
+                    }
+
+                    await refreshExplorer();
+                    if(window.loadCodeForCurrentDB) loadCodeForCurrentDB();
+                    else { AppState.editors.a.setValue(''); AppState.editors.b.setValue(''); }
+                    
+                    logMessage(`🗑️ Đã xóa thành công Database '${db}'`, "success");
+                } catch(err) {
+                    alert("Lỗi khi xóa Database: " + err.message);
+                } finally {
+                    if (window.hideLoader) hideLoader();
+                }
+            };
+
+            // Click ra chỗ khác thì tự động ẩn Menu đi
+            const closeMenu = () => {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            };
+            setTimeout(() => document.addEventListener('click', closeMenu), 10);
+        };
         
         container.appendChild(dbNode);
         
@@ -1159,6 +1252,7 @@ function bindEvents() {
             const action = li.getAttribute('data-action');
             if (action === 'format') document.getElementById('btn-format-sql').click();
             if (action === 'theme') document.getElementById('btn-theme-toggle').click();
+            
             if (action === 'backup') document.getElementById('btn-backup').click();
             if (action === 'clear') document.getElementById('log-messages').innerHTML = 'Đã xóa nhật ký.';
             cmdModal.classList.remove('active');
@@ -1225,18 +1319,25 @@ function bindEvents() {
     };
     
     // DB Creation
-    // DB Creation (Giữ nguyên logic Regex và Prompt cũ)
     document.getElementById('btn-new-db').onclick = async () => {
-        let name = prompt(`Nhập tên Database mới cho ${AppState.currentEngine.toUpperCase()}:`);
-        if (name) {
-            name = name.trim().toLowerCase();
+    let name = prompt(`Nhập tên Database mới cho ${AppState.currentEngine.toUpperCase()}:`);
+    if (name) {
+        name = name.trim().toLowerCase();
+        
+        // Validate bằng Regex hệt như code cũ
+        if (/^[a-z0-9_]+$/.test(name)) {
+            if (AppState.dbLists[AppState.currentEngine].includes(name)) {
+                return alert("Database đã tồn tại trong Engine này!");
+            }
             
-            // Validate bằng Regex hệt như code cũ
-            if (/^[a-z0-9_]+$/.test(name)) {
-                if (AppState.dbLists[AppState.currentEngine].includes(name)) {
-                    return alert("Database đã tồn tại trong Engine này!");
-                }
-                
+            // 1. BẬT BỨC MÀN LOADING LÊN TRƯỚC
+            if (window.showLoader) showLoader(`Đang khởi tạo Database ${name}\n    Vui lòng chờ trong giây lát!`);
+            
+            // Ép trình duyệt ngưng 50ms để kịp vẽ cái màn hình Loading ra
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            try {
+                // 2. CHẠY TÁC VỤ NẶNG (Cập nhật state, tạo DB, vẽ lại UI)
                 AppState.dbLists[AppState.currentEngine].push(name);
                 AppState.activeDBs[AppState.currentEngine] = name;
                 
@@ -1248,11 +1349,19 @@ function bindEvents() {
                 await AppState.adapters[AppState.currentEngine].createDB(name);
                 await refreshExplorer();
                 logMessage(`Đã tạo Database: ${name}`, "success");
-            } else {
-                alert("Tên không hợp lệ! Chỉ dùng chữ cái, số và dấu gạch dưới.");
+            } catch (err) {
+                alert("Lỗi khi tạo Database: " + err.message);
+                logMessage("Lỗi tạo DB: " + err.message, "error");
+            } finally {
+                // 3. TẮT MÀN HÌNH LOADING DÙ THÀNH CÔNG HAY THẤT BẠI
+                if (window.hideLoader) hideLoader();
             }
+            
+        } else {
+            alert("Tên không hợp lệ! Chỉ dùng chữ cái, số và dấu gạch dưới.");
         }
-    };
+    }
+};
     
     // Pagination & Search
     document.getElementById('btn-prev-page').onclick = () => { if(AppState.currentPage > 1) { AppState.currentPage--; renderPagination(); }};
@@ -1375,7 +1484,27 @@ function setupResizers() {
     document.addEventListener('mouseup', () => { if(isDraggingH){ isDraggingH = false; document.body.style.cursor = 'default'; }});
 }
 
-window.onload = initSystem;
+// ==========================================
+// TỰ ĐỘNG BẬT LOADING KHI VỪA KHỞI ĐỘNG WEB
+// ==========================================
+window.onload = async () => {
+    // 1. Bật màn hình loading che kín giao diện ngay lập tức
+    window.showLoader("Đang khởi tạo SQL Studio \n     Vui lòng chờ trong giây lát!");
+    
+    // Cho trình duyệt thở 50ms để kịp render giao diện màn hình mờ
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    try {
+        // 2. Chạy hàm khởi tạo nặng phía trên
+        await initSystem();
+    } catch (err) {
+        console.error("Lỗi khởi động hệ thống:", err);
+        alert("Lỗi khởi động: " + err.message);
+    } finally {
+        // 3. Tắt màn hình loading khi mọi thứ đã sẵn sàng
+        window.hideLoader();
+    }
+};
 window.genSQL = async (tableName, type) => {
     const engine = AppState.currentEngine;
     const db = AppState.activeDBs[engine];
@@ -1407,4 +1536,56 @@ window.applyTheme = function(themeName) {
     
     // 3. Lưu vào bộ nhớ để F5 không bị mất
     localStorage.setItem('ide_theme', themeName);
+};
+
+// ==========================================
+// MÀN HÌNH LOADING CHE TOÀN TRANG
+// ==========================================
+window.showLoader = function(message = "Đang xử lý...") {
+    let loader = document.getElementById('global-loader');
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'global-loader';
+        loader.innerHTML = `
+            <div class="loader-box">
+                <div class="spinner"></div>
+                <img src="2.png" alt="Logo" class="loader-logo">
+            </div>
+            <div class="loader-text" id="loader-text"></div>
+            <style>
+                #global-loader {
+                    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                    background: rgba(0, 0, 0, 0.75); z-index: 99999;
+                    display: flex; flex-direction: column; justify-content: center; align-items: center;
+                    color: #fff; font-family: sans-serif; font-size: 16px;
+                    backdrop-filter: blur(4px);
+                }
+                .loader-box {
+                    position: relative; width: 80px; height: 80px;
+                    display: flex; justify-content: center; align-items: center;
+                    margin-bottom: 20px;
+                }
+                .spinner {
+                    position: absolute; top: 0; left: 0; width: 80px; height: 80px;
+                    border: 5px solid rgba(255, 255, 255, 0.2);
+                    border-top-color: #ff9800; border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                }
+                .loader-logo {
+                    width: 40px; height: 40px; object-fit: contain;
+                    border-radius: 50%; animation: pulse 1.5s ease-in-out infinite;
+                }
+                @keyframes spin { 100% { transform: rotate(360deg); } }
+                @keyframes pulse { 0%, 100% { transform: scale(0.9); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } }
+            </style>
+        `;
+        document.body.appendChild(loader);
+    }
+    document.getElementById('loader-text').innerText = message;
+    loader.style.display = 'flex';
+};
+
+window.hideLoader = function() {
+    const loader = document.getElementById('global-loader');
+    if (loader) loader.style.display = 'none';
 };
