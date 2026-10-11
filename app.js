@@ -10,6 +10,7 @@ class DatabaseAdapter {
     async execute(dbName, sql) { return []; }
     async getTables(dbName) { return []; }
     async getTableSchema(dbName, tableName) { return []; }
+    async getForeignKeys(dbName) { return []; }
     async exportLogical(dbName) {
         let exportData = { engine: AppState.currentEngine, dbName: dbName, tables: [] };
         const tables = await this.getTables(dbName);
@@ -29,6 +30,27 @@ class PGAdapter extends DatabaseAdapter {
             await this.instances[name].exec(`CREATE EXTENSION IF NOT EXISTS postgis;`);
         }
     }
+
+    // <-- THÊM HÀM NÀY VÀO TRONG CLASS PGAdapter -->
+    async getForeignKeys(dbName) {
+        try {
+            // Truy vấn lấy danh sách bảng cha - bảng con trong PostgreSQL
+            const rows = await this.execute(dbName, `
+                SELECT
+                    tc.table_name AS from_table,
+                    ccu.table_name AS to_table
+                FROM information_schema.table_constraints AS tc
+                JOIN information_schema.constraint_column_usage AS ccu
+                  ON ccu.constraint_name = tc.constraint_name
+                WHERE tc.constraint_type = 'FOREIGN KEY' 
+                  AND tc.table_schema = 'public'
+            `);
+            return rows;
+        } catch(e) { 
+            return []; 
+        }
+    }
+
     async execute(dbName, sql) {
         const res = await this.instances[dbName].exec(sql);
         let lastRes = Array.isArray(res) ? res[res.length - 1] : res;
@@ -178,6 +200,7 @@ function initEditors() {
         autoCloseBrackets: true, // <-- Bật tính năng gõ 1 ra 2 (ngoặc, nháy đơn, nháy kép)
         smartIndent: true,       // <-- Bật tự động nhận diện thụt lề
         indentUnit: 4,
+        lineWrapping: true,
         extraKeys: {
             "Enter": smartEnter
         }       // <-- Quy định mỗi lần thụt lề là 4 khoảng trắng
@@ -1199,31 +1222,95 @@ function bindEvents() {
         });
     };
 
-    // --- NHÓM 3: VẼ SƠ ĐỒ ER DIAGRAM ---
-    document.getElementById('btn-load-er').onclick = async () => {
+   // --- NHÓM 3: VẼ SƠ ĐỒ ER DIAGRAM (Có liên kết & Zoom bằng chuột) ---
+    document.getElementById('btn-load-er').addEventListener('click', async () => {
         const engine = AppState.currentEngine;
         const db = AppState.activeDBs[engine];
-        const tables = await AppState.adapters[engine].getTables(db);
-        
-        if (tables.length === 0) return document.getElementById('er-canvas').innerHTML = "Chưa có bảng nào để vẽ sơ đồ.";
-        
-        let erCode = "erDiagram\n";
-        for(let t of tables) {
-            const schema = await AppState.adapters[engine].getTableSchema(db, t);
-            erCode += `    ${t} {\n`;
-            schema.forEach(c => {
-                // Mermaid không cho dùng ký tự đặc biệt trong tên kiểu dữ liệu
-                let typeClean = c.data_type.replace(/[^a-zA-Z0-9]/g, ''); 
-                erCode += `        ${typeClean} ${c.column_name} ${c.is_pk==1 ? 'PK' : ''}\n`;
-            });
-            erCode += `    }\n`;
-        }
-        
         const erContainer = document.getElementById('er-canvas');
-        erContainer.removeAttribute('data-processed'); // Xóa cache cũ của Mermaid
-        erContainer.innerHTML = erCode;
-        mermaid.init(undefined, erContainer); // Vẽ lại
-    };
+        
+        try {
+            const tables = await AppState.adapters[engine].getTables(db);
+            if (!tables || tables.length === 0) return erContainer.innerHTML = "Chưa có bảng nào để vẽ sơ đồ.";
+            
+            erContainer.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Đang vẽ sơ đồ...`;
+            
+            let erCode = "erDiagram\n";
+            
+            // 1. VẼ CÁC BẢNG VÀ CỘT
+            for (let t of tables) {
+                const schema = await AppState.adapters[engine].getTableSchema(db, t);
+                let safeTable = String(t).replace(/[^a-zA-Z0-9_]/g, ''); 
+                erCode += `    ${safeTable} {\n`;
+                
+                if (schema && schema.length > 0) {
+                    schema.forEach(c => {
+                        let typeClean = String(c.data_type || 'unknown').replace(/[^a-zA-Z0-9_]/g, '_'); 
+                        let colClean = String(c.column_name || 'col').replace(/[^a-zA-Z0-9_]/g, '');
+                        let pkAttr = c.is_pk == 1 ? 'PK' : '';
+                        erCode += `        ${typeClean} ${colClean} ${pkAttr}\n`;
+                    });
+                } else {
+                    erCode += `        unknown no_column\n`;
+                }
+                erCode += `    }\n`;
+            }
+            
+            // 2. VẼ DÂY LIÊN KẾT (RELATIONSHIPS)
+            const fks = await AppState.adapters[engine].getForeignKeys(db);
+            fks.forEach(fk => {
+                let from = String(fk.from_table).replace(/[^a-zA-Z0-9_]/g, '');
+                let to = String(fk.to_table).replace(/[^a-zA-Z0-9_]/g, '');
+                // Vẽ quan hệ 1-nhiều (1 to_table có nhiều from_table)
+                erCode += `    ${to} ||--o{ ${from} : "liên_kết"\n`;
+            });
+
+            mermaid.initialize({ startOnLoad: false, theme: 'default' });
+            
+            const renderId = 'mermaid-svg-' + Math.random().toString(36).substr(2, 9);
+            const { svg } = await mermaid.render(renderId, erCode);
+            erContainer.innerHTML = svg;
+
+            // 3. FIX LỖI HIỂN THỊ VÀ KÍCH HOẠT TÍNH NĂNG ZOOM/PAN
+            // Ép khung chứa phải căng cứng 100% để SVG không bị bóp méo
+            erContainer.style.width = '100%';
+            erContainer.style.height = '100%';
+            erContainer.style.display = 'flex';
+            erContainer.style.justifyContent = 'center';
+            erContainer.style.alignItems = 'center';
+            erContainer.style.overflow = 'hidden';
+
+            const svgElement = erContainer.querySelector('svg');
+            
+            if (svgElement && typeof svgPanZoom !== 'undefined') {
+                // Đảm bảo SVG bung full khung
+                svgElement.style.width = '100%';
+                svgElement.style.height = '100%';
+                svgElement.style.maxWidth = 'none';
+                
+                // MẤU CHỐT LÀ ĐÂY: Trì hoãn 100ms để trình duyệt kịp tính toán layout thật
+                setTimeout(() => {
+                    const panZoomInstance = svgPanZoom(svgElement, {
+                        zoomEnabled: true,
+                        controlIconsEnabled: true,
+                        fit: true,       // Ép SVG vừa khít màn hình
+                        center: true,    // Đưa ra giữa
+                        minZoom: 0.1,    // Cho phép thu nhỏ tẹt ga (để nhìn thấy các bảng xa nhau)
+                        maxZoom: 10
+                    });
+                    
+                    // Gọi lại hàm update để đảm bảo nó căn lại một lần nữa cho chắc cốp
+                    panZoomInstance.resize();
+                    panZoomInstance.fit();
+                    panZoomInstance.center();
+                    
+                }, 100);
+            }
+
+        } catch (err) {
+            console.error("Lỗi vẽ Mermaid:", err);
+            erContainer.innerHTML = `<div style="color:var(--danger); padding:10px;"><b>Lỗi:</b> ${err.message}</div>`;
+        }
+    });
 
     // --- NHÓM 4: EXPLAIN QUERY ---
     document.getElementById('btn-explain-query').onclick = () => {
@@ -1374,7 +1461,7 @@ function bindEvents() {
     
     // Modals & Tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.onclick = (e) => switchTab(e.currentTarget.dataset.target);
+        btn.addEventListener('click', (e) => switchTab(e.currentTarget.dataset.target));
     });
     document.getElementById('btn-backup').onclick = () => document.getElementById('modal-backup').classList.add('active');
     document.getElementById('btn-history').onclick = () => { renderHistory(); document.getElementById('modal-history').classList.add('active'); };
@@ -1589,3 +1676,11 @@ window.hideLoader = function() {
     const loader = document.getElementById('global-loader');
     if (loader) loader.style.display = 'none';
 };
+// --- BẮT BUỘC EDITOR VẼ LẠI CHỮ KHI THAY ĐỔI KÍCH THƯỚC MÀN HÌNH ---
+window.addEventListener('resize', () => {
+    // Độ trễ 50ms để trình duyệt kịp tính toán xong khung Flexbox
+    setTimeout(() => {
+        if (AppState.editors && AppState.editors.a) AppState.editors.a.refresh();
+        if (AppState.editors && AppState.editors.b) AppState.editors.b.refresh();
+    }, 50);
+});

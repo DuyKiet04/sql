@@ -259,3 +259,27 @@ td.edited-cell { background: rgba(46, 160, 67, 0.2) !important; font-style: ital
 #db-context-menu .menu-item:hover {
     background: rgba(244, 67, 54, 0.15);
 }
+/* --- CHỐNG TRÀN VÀ ĐÈ CHỮ CHO CODEMIRROR --- */
+/* 1. Ép các vách ngăn không được phình to qua giới hạn */
+#editors-container, .pane {
+    min-width: 0 !important;
+}
+
+/* 2. Đóng khung tọa độ cho thằng bọc ngoài Editor */
+.pane-body {
+    position: relative !important;
+    flex: 1 1 auto;
+    min-width: 0 !important;
+    overflow: hidden !important;
+}
+
+/* 3. Bóp cổ thằng CodeMirror ép vừa khít 4 góc của khung chứa */
+.CodeMirror {
+    position: absolute !important;
+    top: 0; 
+    left: 0; 
+    right: 0; 
+    bottom: 0;
+    width: 100% !important;
+    height: 100% !important;
+}
