@@ -693,10 +693,12 @@ async function refreshExplorer() {
     const activeDb = AppState.activeDBs[engine];
     AppState.schemaMetadata = {}; 
     
-    // --- ĐOẠN MỚI THÊM: Hiển thị DB đang kết nối lên Tiêu đề Editor ---
-    document.querySelector('#pane-a .pane-title').innerHTML = `<i class="ri-table-line"></i> Editor A (DDL) <span style="color:var(--warning); font-size:11px; margin-left:8px;">[DB: ${activeDb}]</span>`;
-    document.querySelector('#pane-b .pane-title').innerHTML = `<i class="ri-code-line"></i> Editor B (Query) <span style="color:var(--warning); font-size:11px; margin-left:8px;">[DB: ${activeDb}]</span>`;
-    // ------------------------------------------------------------------
+    // --- CHÈN TÊN DB AN TOÀN (KHÔNG LÀM MẤT NÚT) ---
+    const titleA = document.querySelector('#pane-a .pane-title span:first-child');
+    if (titleA) titleA.innerHTML = `<i class="ri-table-line"></i> Editor A (DDL) <span style="color:var(--warning); font-size:11px; margin-left:8px;">[DB: ${activeDb}]</span>`;
+    
+    const titleB = document.querySelector('#pane-b .pane-title span:first-child');
+    if (titleB) titleB.innerHTML = `<i class="ri-code-line"></i> Editor B (Query) <span style="color:var(--warning); font-size:11px; margin-left:8px;">[DB: ${activeDb}]</span>`;
 
     for(let db of dbList) {
         const dbNode = document.createElement('div');

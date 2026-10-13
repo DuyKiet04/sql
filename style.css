@@ -260,26 +260,30 @@ td.edited-cell { background: rgba(46, 160, 67, 0.2) !important; font-style: ital
     background: rgba(244, 67, 54, 0.15);
 }
 /* --- CHỐNG TRÀN VÀ ĐÈ CHỮ CHO CODEMIRROR --- */
-/* 1. Ép các vách ngăn không được phình to qua giới hạn */
-#editors-container, .pane {
-    min-width: 0 !important;
-}
-
-/* 2. Đóng khung tọa độ cho thằng bọc ngoài Editor */
-.pane-body {
-    position: relative !important;
-    flex: 1 1 auto;
-    min-width: 0 !important;
-    overflow: hidden !important;
-}
-
-/* 3. Bóp cổ thằng CodeMirror ép vừa khít 4 góc của khung chứa */
-.CodeMirror {
-    position: absolute !important;
-    top: 0; 
-    left: 0; 
-    right: 0; 
-    bottom: 0;
+/* --- TRỊ TẬN GỐC LỖI TRÀN CHỮ VÀ MẤT HEADER --- */
+#editors-container {
+    display: flex !important;
     width: 100% !important;
-    height: 100% !important;
+    min-width: 0 !important;
+}
+
+.pane {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 1. Giữ nguyên chiều cao của thanh Tiêu đề, không cho CodeMirror đè lên */
+.pane-title {
+    flex-shrink: 0 !important;
+    z-index: 10;
+}
+
+/* 2. Bóp CodeMirror nằm ngoan ngoãn bên dưới, tự động rớt dòng */
+.CodeMirror {
+    flex: 1 1 auto !important;
+    height: auto !important; /* Để Flexbox tự lo chiều cao */
+    min-width: 0 !important;
+    position: relative !important; /* Không dùng absolute nữa */
 }
